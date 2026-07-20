@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        SERVER_IP      = '172.31.25.44'
-        REMOTE_USER    = 'ubuntu'
-        SSH_CREDENTIAL = 'target-server-key'
-        DEPLOY_DIR     = '/var/www/html'
+        SERVER_IP      = "172.31.25.44"
+        REMOTE_USER    = "ubuntu"
+        SSH_CREDENTIAL = "target-server-key"
+        DEPLOY_DIR     = "/var/www/html"
     }
 
     stages {
@@ -16,77 +16,53 @@ pipeline {
             }
         }
 
-        stage('Prepare Target Server') {
-            steps {
-                sshagent(credentials: [SSH_CREDENTIAL]) {
-                    sh """
-                    ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} '
-                    set -e
-
-                    echo "Updating packages..."
-                    sudo apt-get update -y
-
-                    echo "Installing Java..."
-                    if ! command -v java >/dev/null 2>&1; then
-                        sudo apt-get install -y openjdk-21-jdk
-                    fi
-
-                    echo "Installing Git..."
-                    if ! command -v git >/dev/null 2>&1; then
-                        sudo apt-get install -y git
-                    fi
-
-                    echo "Installing Nginx..."
-                    if ! command -v nginx >/dev/null 2>&1; then
-                        sudo apt-get install -y nginx
-                    fi
-
-                    sudo systemctl enable nginx
-                    sudo systemctl restart nginx
-
-                    sudo mkdir -p ${DEPLOY_DIR}
-                    sudo rm -rf ${DEPLOY_DIR}/*
-                    '
-                    """
-                }
-            }
-        }
-
-        stage('Copy Website Files') {
-            steps {
-                sshagent(credentials: [SSH_CREDENTIAL]) {
-                    sh """
-                    scp -o StrictHostKeyChecking=no -r * ${REMOTE_USER}@${SERVER_IP}:/tmp/website/
-                    """
-                }
-            }
-        }
-
         stage('Deploy Website') {
             steps {
                 sshagent(credentials: [SSH_CREDENTIAL]) {
+
                     sh """
                     ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} '
-                    set -e
+                        set -e
 
-                    sudo mkdir -p ${DEPLOY_DIR}
-                    sudo cp -r /tmp/website/* ${DEPLOY_DIR}/
+                        echo "Updating packages..."
+                        sudo apt-get update -y
 
-                    sudo chown -R www-data:www-data ${DEPLOY_DIR}
-                    sudo chmod -R 755 ${DEPLOY_DIR}
+                        if ! command -v git >/dev/null 2>&1; then
+                            sudo apt-get install -y git
+                        fi
 
-                    sudo systemctl restart nginx
+                        if ! command -v nginx >/dev/null 2>&1; then
+                            sudo apt-get install -y nginx
+                        fi
 
-                    echo "Deployment Successful"
+                        sudo systemctl enable nginx
+                        sudo systemctl start nginx
 
-                    echo "Java Version:"
-                    java --version
+                        mkdir -p /tmp/website
+                        rm -rf /tmp/website/*
+                    '
+                    """
 
-                    echo "Git Version:"
-                    git --version
+                    sh """
+                    scp -o StrictHostKeyChecking=no -r ./* ${REMOTE_USER}@${SERVER_IP}:/tmp/website/
+                    """
 
-                    echo "Nginx Version:"
-                    nginx -v
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} '
+                        set -e
+
+                        sudo mkdir -p ${DEPLOY_DIR}
+                        sudo rm -rf ${DEPLOY_DIR}/*
+                        sudo cp -r /tmp/website/* ${DEPLOY_DIR}/
+
+                        sudo chown -R www-data:www-data ${DEPLOY_DIR}
+                        sudo chmod -R 755 ${DEPLOY_DIR}
+
+                        sudo systemctl restart nginx
+
+                        echo "=================================="
+                        echo "Deployment Successful"
+                        echo "=================================="
                     '
                     """
                 }
@@ -96,10 +72,10 @@ pipeline {
 
     post {
         success {
-            echo "==================================="
+            echo "=================================="
             echo "Website deployed successfully!"
             echo "Open: http://${SERVER_IP}"
-            echo "==================================="
+            echo "=================================="
         }
 
         failure {
