@@ -1,0 +1,109 @@
+pipeline {
+    agent any
+
+    environment {
+        SERVER_IP      = '172.31.25.44'      // Replace with your target server IP
+        REMOTE_USER    = 'ubuntu'
+        SSH_CREDENTIAL = 'target-server-key'
+        DEPLOY_DIR     = '/var/www/html'
+    }
+
+    stages {
+
+        stage('Checkout Source') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Deploy to Target Server') {
+            steps {
+                sshagent(credentials: [SSH_CREDENTIAL]) {
+
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} << 'EOF'
+
+                    set -e
+
+                    echo "Updating packages..."
+                    sudo apt-get update -y
+
+                    echo "Installing Java 21..."
+                    if ! command -v java >/dev/null 2>&1; then
+                        sudo apt-get install -y openjdk-21-jdk
+                    fi
+
+                    echo "Installing Git..."
+                    if ! command -v git >/dev/null 2>&1; then
+                        sudo apt-get install -y git
+                    fi
+
+                    echo "Installing Nginx..."
+                    if ! command -v nginx >/dev/null 2>&1; then
+                        sudo apt-get install -y nginx
+                    fi
+
+                    sudo systemctl enable nginx
+                    sudo systemctl start nginx
+
+                    sudo mkdir -p ${DEPLOY_DIR}
+                    sudo rm -rf ${DEPLOY_DIR}/*
+
+                    EOF
+
+                    scp -o StrictHostKeyChecking=no -r \
+                    index.html \
+                    style.css \
+                    script.js \
+                    images \
+                    ${REMOTE_USER}@${SERVER_IP}:/tmp/
+
+                    ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} << 'EOF'
+
+                    set -e
+
+                    sudo cp /tmp/index.html ${DEPLOY_DIR}/
+                    sudo cp /tmp/style.css ${DEPLOY_DIR}/
+                    sudo cp /tmp/script.js ${DEPLOY_DIR}/
+                    sudo cp -r /tmp/images ${DEPLOY_DIR}/
+
+                    sudo chown -R www-data:www-data ${DEPLOY_DIR}
+                    sudo chmod -R 755 ${DEPLOY_DIR}
+
+                    sudo systemctl restart nginx
+
+                    echo "=============================="
+                    echo "Deployment Successful"
+                    echo "=============================="
+
+                    echo "Java Version"
+                    java --version
+
+                    echo "Git Version"
+                    git --version
+
+                    echo "Nginx Version"
+                    nginx -v
+
+                    EOF
+                    """
+                }
+            }
+        }
+
+    }
+
+    post {
+
+        success {
+            echo "======================================"
+            echo "Website deployed successfully!"
+            echo "Open: http://${SERVER_IP}"
+            echo "======================================"
+        }
+
+        failure {
+            echo "Deployment Failed!"
+        }
+    }
+}
