@@ -45,7 +45,7 @@ pipeline {
                     sudo systemctl restart nginx
 
                     sudo mkdir -p ${DEPLOY_DIR}
-                    sudo rm -rf ${DEPLOY_DIR:?}/*
+                    sudo rm -rf ${DEPLOY_DIR}/*
                     '
                     """
                 }
